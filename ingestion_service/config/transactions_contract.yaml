@@ -1,0 +1,64 @@
+producer:
+  name: "online_retail_app"
+  source_system: "online_retail_app"
+  description: "Online Retail Application Transactions Data"
+  source_type: "postgres database"
+  source_config:
+    host: "localhost" # temporary, should be replaced with the actual service name "postgres_db"
+    port: 5432
+    database: "sales_db"
+    user: "sales_user"
+    password: "sales_password"
+
+dataset:
+  entity_name: "transactions"
+  version: "1.0"
+  primary_keys: [ "invoiceno", "stockcode" ]
+  fetch_size: 10000
+  incremental_load:
+    mode: "watermark"
+    watermark_column: "invoicedate"
+    watermark_type: "timestamp"
+    # last_extracted_value is managed by a separate state file
+    # The value here will serve as the *initial* watermark for the very first run.
+    initial_watermark_value: "2009-12-01 00:00:00" # Set to a date before your data starts
+
+  schema:
+    fields:
+      - name: invoiceno
+        type: string
+        nullable: false
+      - name: stockcode
+        type: string
+        nullable: false
+      - name: description
+        type: string
+        nullable: true
+      - name: quantity
+        type: integer
+        nullable: false
+      - name: invoicedate
+        type: timestamp
+        nullable: false
+      - name: unitprice
+        type: decimal
+        nullable: false
+      - name: customerid
+        type: integer
+        nullable: true
+      - name: country
+        type: string
+        nullable: true
+
+kafka_config:
+  bootstrap_servers: "kafka:9092"
+  topic: "raw_transactions"
+
+s3_landing_config:
+  bucket_name: "data-lake"
+  prefix: "bronze/online_retail_app/transactions/"
+  data_format: "json"
+  access_key: "minioadmin"
+  secret_key: "minioadmin"
+  endpoint: "minio:9000"
+  secure: False

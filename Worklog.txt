@@ -1,0 +1,27 @@
+# Starting with Docker compose file to setup the environment
+
+- Issue with loading data on install via docker container
+cause:
+    - wrong timestamp format in the data (1/1/2023 8:09 AM)
+    - unicode settings UTF-8 doesn't support currency format '£'
+workaround:
+    - manual data manipulation by changing the timestamp format to '2023-01-01 08:09:00'
+    - removed '£'
+    - ran docker
+    - ran `docker exec -i sales_postgres_db psql -U sales_user -d sales_db -f /docker-entrypoint-initdb.d/init.sql`
+
+
+# INFA:
+- created bucket manually - consider TF
+- used local creds - consider TF resource
+
+
+
+      KAFKA_BROKER_ID: 1
+      KAFKA_CFG_NODE_ID: 1
+      KAFKA_CFG_PROCESS_ROLES: broker
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT  # Add this line
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@localhost:9092
+      ALLOW_PLAINTEXT_LISTENER: "yes"
