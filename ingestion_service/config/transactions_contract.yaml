@@ -4,7 +4,7 @@ producer:
   description: "Online Retail Application Transactions Data"
   source_type: "postgres database"
   source_config:
-    host: "localhost" # temporary, should be replaced with the actual service name "postgres_db"
+    host: "postgres_db"   #for local test, set to "localhost"
     port: 5432
     database: "sales_db"
     user: "sales_user"

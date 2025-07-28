@@ -1,18 +1,16 @@
-# Use a lightweight Python image
-FROM python:3.9-slim
+FROM python:3.9-slim-buster
 
-# Set the working directory inside the container
 WORKDIR /app
 
-# Copy the requirements file and install dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the application code into the container
-COPY . .
+COPY ./ingestion_service .
 
 # Expose the port the app runs on (if applicable)
 EXPOSE 8000
 
-# Command to run the application
-#CMD ["python", "main.py"]
+# This command will be the default entrypoint when the container starts
+CMD ["python", "src/postgres_extractor.py"]
+
+# keep the container running

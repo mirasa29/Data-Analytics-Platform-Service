@@ -18,7 +18,7 @@ class PostgresExtractorError(Exception):
 
 
 class CustomJsonEncoder(json.JSONEncoder):
-    """ Custom JSON Encoder for data serialization 
+    """ Customised JSON Encoder for data serialization
     (for MVP: scope only handles decimal, datetime) 
     """
     
@@ -30,7 +30,7 @@ class CustomJsonEncoder(json.JSONEncoder):
         # Handle UUIDs or other binary types that psycopg2 might return as 'bytes'
         if isinstance(obj, (bytes, bytearray)):
             try:
-                # assuming it's text representation (like UUIDs)
+                # return if it's actually a text
                 return obj.decode('utf-8')
             except UnicodeDecodeError:
                 # Fallback if it's actual binary data, might need base64 encoding or different handling
@@ -90,10 +90,9 @@ class PostgresExtractor:
     @staticmethod
     def _delivery_report(err, msg):
         """Callback for Kafka message delivery."""
-        if err is not None:
+        if err:
             raise PostgresExtractorError(f"Message delivery failed for key {msg.key()}: {err}")
-        else:
-            logging.info(f"Message delivered to topic {msg.topic()} [{msg.partition()}] at offset {msg.offset()}")
+        logging.info(f"Message delivered to topic {msg.topic()} [{msg.partition()}] at offset {msg.offset()}")
 
     def extract_and_produce(self, last_extracted_value):
         """
@@ -122,13 +121,17 @@ class PostgresExtractor:
                     try:
                         last_extracted_value = datetime.fromisoformat(last_extracted_value)
                     except ValueError:
-                        logging.warning(f"Invalid initial_watermark_value format: {last_extracted_value}. Setting to min datetime.")
-                        last_extracted_value = datetime.min
+                        raise PostgresExtractorError(
+                            f"Invalid watermark value format: {last_extracted_value}. Extraction aborted.")
                 elif not isinstance(last_extracted_value, datetime):
-                    logging.warning(f"Unexpected type for initial watermark: {type(last_extracted_value)}. Setting to min datetime.")
-                    last_extracted_value = datetime.min
+                    raise PostgresExtractorError(
+                        f"Unexpected type for watermark: {type(last_extracted_value)}. Extraction aborted.")
             elif watermark_type == 'integer':
-                last_extracted_value = int(last_extracted_value)
+                try:
+                    last_extracted_value = int(last_extracted_value)
+                except ValueError:
+                    raise PostgresExtractorError(
+                        f"Invalid integer watermark value: {last_extracted_value}. Extraction aborted.")
 
             new_max_watermark_value = last_extracted_value  # Start tracking from here
 
@@ -136,8 +139,10 @@ class PostgresExtractor:
             query_sql = ""
             if incremental_cfg and incremental_cfg['mode'] == 'watermark':
                 # Convert datetime object to ISO string for SQL query if needed
-                sql_watermark_param = str(last_extracted_value) if not isinstance(last_extracted_value,
-                                                                                  datetime) else last_extracted_value.isoformat()
+                sql_watermark_param = (last_extracted_value.isoformat()
+                                       if isinstance(last_extracted_value, datetime)
+                                       else str(last_extracted_value))
+
                 query_sql = (f"SELECT * FROM {self.table_name} "
                              f"WHERE {watermark_column} > '{sql_watermark_param}' "
                              f"ORDER BY {watermark_column} ASC;")
@@ -196,17 +201,13 @@ class PostgresExtractor:
             return new_max_watermark_value if new_max_watermark_value is not None else last_extracted_value
 
         except Exception as error:
-            logging.error(f"Error during extraction or production: {error}")
+            logging.error(f"Error during data extraction or production: {error}")
             raise
         finally:
-            if cursor:
-                cursor.close()
-            if self.producer:
-                self.producer.flush()
-                logging.info("Kafka Producer flushed.")
-            if self.db_conn:
-                self.db_conn.close()
-                logging.info("PostgreSQL connection closed.")
+            cursor.close()
+            self.producer.flush()
+            self.db_conn.close()
+            logging.info("Resources released.")
 
 
 # note: only for isolated testing, actual orchestration is through main_ingestion_job.py
