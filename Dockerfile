@@ -11,6 +11,4 @@ COPY ./ingestion_service .
 EXPOSE 8000
 
 # This command will be the default entrypoint when the container starts
-CMD ["python", "src/postgres_extractor.py"]
-
-# keep the container running
+CMD ["python", "src/main_ingestion_job.py"]

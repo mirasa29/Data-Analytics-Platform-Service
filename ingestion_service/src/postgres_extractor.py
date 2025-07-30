@@ -84,8 +84,7 @@ class PostgresExtractor:
             logging.info(f"Kafka Producer initialized for brokers: {conf['bootstrap.servers']}")
             return producer
         except Exception as error:
-            logging.error(f"Error initializing Kafka Producer: {error}")
-            raise
+            raise PostgresExtractorError(f"Failed to initialize Kafka Producer: {error}")
 
     @staticmethod
     def _delivery_report(err, msg):
@@ -211,13 +210,13 @@ class PostgresExtractor:
 
 
 # note: only for isolated testing, actual orchestration is through main_ingestion_job.py
-if __name__ == "__main__":
-    contract_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'config', 'transactions_contract.yaml')
-
-    with open(contract_path, 'r') as f:
-        config = yaml.safe_load(f)
-    initial_watermark = config['dataset']['incremental_load']['initial_watermark_value']
-
-    extractor = PostgresExtractor(contract_path)
-    new_watermark = extractor.extract_and_produce(initial_watermark)
-    logging.info(f"Extractor finished. New watermark: {new_watermark}")
+# if __name__ == "__main__":
+#     contract_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'config', 'transactions_contract.yaml')
+#
+#     with open(contract_path, 'r') as f:
+#         config = yaml.safe_load(f)
+#     initial_watermark = config['dataset']['incremental_load']['initial_watermark_value']
+#
+#     extractor = PostgresExtractor(contract_path)
+#     new_watermark = extractor.extract_and_produce(initial_watermark)
+#     logging.info(f"Extractor finished. New watermark: {new_watermark}")

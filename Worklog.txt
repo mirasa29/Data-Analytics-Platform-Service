@@ -25,3 +25,9 @@ workaround:
       KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT  # Add this line
       KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@localhost:9092
       ALLOW_PLAINTEXT_LISTENER: "yes"
+
+
+# IDEAS for updates:
+- separate script to read data contract from the file and load consume it as pydantic model
+- add validations on data contract pydantic model
+- pass it as argument to KafkaS3Loader and KafkaPostgresLoader

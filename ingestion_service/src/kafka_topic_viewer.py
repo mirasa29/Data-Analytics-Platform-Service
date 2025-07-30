@@ -54,7 +54,7 @@ def check_kafka_topic(config_path, num_messages_to_check=10, timeout_ms=5000):
                     logging.info(f"  Value (JSON): \n{pretty_value[:500]}...") # Print first 500 chars of pretty JSON
                 except json.JSONDecodeError:
                     logging.info(f"  Value (Raw): {record_value[:500]}...") # Fallback for non-JSON
-                logging.info(f"  Topic: {msg.topic()}, Partition: {msg.partition()}, Offset: {msg.offset()}")
+                logging.info(f"Topic: {msg.topic()}, Partition: {msg.partition()}, Offset: {msg.offset()}")
 
                 messages_count += 1
                 if messages_count % 10 == 0:
