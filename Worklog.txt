@@ -31,3 +31,9 @@ workaround:
 - separate script to read data contract from the file and load consume it as pydantic model
 - add validations on data contract pydantic model
 - pass it as argument to KafkaS3Loader and KafkaPostgresLoader
+
+
+### Reset Ingestion ###
+- delete data from S3 bucket
+- delete data from kafka
+- delete transactions_load_state.json file

@@ -5,6 +5,7 @@ import json
 import yaml
 import logging
 import io
+import uuid  # for generating unique batch IDs
 import os  # only for isolated testing, remove in production
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -27,6 +28,11 @@ class KafkaS3Loader:
         self.dataset_config = self.config['dataset']
 
         self.topic = self.kafka_config['topic']
+
+        self.flush_message_count = self.s3_config.get('flush_message_count', 1000)  # Default to 1000
+        self.flush_interval_seconds = self.s3_config.get('flush_interval_seconds', 10)  # Default to 10 seconds
+        self.message_buffer = []  # stores (record_value, partition, offset)
+        self.last_flush_time = datetime.now()
 
         self.consumer = None
         self.minio_client = None
@@ -69,13 +75,13 @@ class KafkaS3Loader:
             return client
         except ValueError as value_error:
             raise KafkaLoaderError(f"Invalid MinIO configuration: {value_error}")
-        except ConnectionError as conn_error: # Minio client raises ConnectionError
+        except ConnectionError as conn_error:
             raise KafkaLoaderError(f"Connection to MinIO server failed: {conn_error}")
         except Exception as error:
             raise KafkaLoaderError(f"Unexpected error initializing MinIO client: {error}")
 
-    @staticmethod # <--- This decorator is correct
-    def _get_event_date(event_date_str): # <--- REMOVED 'self' from here
+    @staticmethod
+    def _get_event_date(event_date_str):
         """Parses the event date or defaults to the current date."""
         try:
             return datetime.fromisoformat(event_date_str) if event_date_str else datetime.now()
@@ -84,9 +90,12 @@ class KafkaS3Loader:
             logging.warning(f"Invalid event_date_str '{event_date_str}'. Defaulting to current datetime.")
             return datetime.now()
 
-    def _generate_object_name(self, msg, event_date):
-        """Generates the object name for MinIO upload."""
-        file_name = f"{msg.topic()}-{msg.partition()}-{msg.offset()}.json"
+    def _generate_batch_object_name(self, event_date, partition_id, min_offset, max_offset): # UPDATED signature
+        """Generates the object name for MinIO upload for a batch."""
+        # event_date for partitioning, and a unique ID + offset range for the batch file
+        batch_uuid = uuid.uuid4()
+        # partition and min/max offsets for traceability
+        file_name = f"{event_date.strftime('%Y%m%d%H%M%S')}-{partition_id}-{min_offset}-{max_offset}-{batch_uuid}.jsonl"
         return (
             f"{self.s3_config['prefix']}"
             f"year={event_date.year}/"
@@ -95,78 +104,129 @@ class KafkaS3Loader:
             f"{file_name}"
         )
 
-    def _upload_to_minio(self, record_value, object_name):
-        """Uploads the record to MinIO."""
+    def _flush_buffer_to_s3(self):
+        """
+        Writes the accumulated messages in the buffer to a single file in MinIO.
+        Calculates min/max offsets from buffered messages for naming.
+        """
+        if not self.message_buffer:
+            return
+
+        logging.info(f"Flushing buffer of {len(self.message_buffer)} messages to S3...")
+
+        min_offset = float('inf')
+        max_offset = -1
+        representative_partition = None
+        batch_contents_list = []  # List to hold just the JSON string values
+
+        for record_value_str, partition, offset in self.message_buffer:
+            batch_contents_list.append(record_value_str)
+            min_offset = min(min_offset, offset)
+            max_offset = max(max_offset, offset)
+            if representative_partition is None:  # Take the partition of the first message
+                representative_partition = partition
+
+        # partitioning the S3 path, as opposed to offsets in filename
         try:
-            data_bytes = record_value.encode('utf-8')
+            event_date = self._get_event_date(json.loads(batch_contents_list[-1]).get('invoicedate'))
+        except json.JSONDecodeError:
+            logging.warning("Failed to decode JSON from the last message in the buffer. Defaulting to current datetime.")
+            event_date = datetime.now()  # Fallback if last message date is problematic
+
+        # Ensures valid partition ID for filename even if buffer empty or unexpected
+        if representative_partition is None:
+            representative_partition = 0
+
+        object_name = self._generate_batch_object_name(event_date, representative_partition, min_offset, max_offset)
+
+        # Join all messages in the buffer + newline to create a JSONL string
+        batch_content = "\n".join(batch_contents_list) + "\n"
+        data_bytes = batch_content.encode('utf-8')
+
+        try:
             self.minio_client.put_object(
                 self.s3_config['bucket_name'],
                 object_name,
                 io.BytesIO(data_bytes),
                 len(data_bytes),
-                content_type="application/json"
+                content_type="application/x-jsonlines"  # Standard type for JSONL
             )
-            logging.info(f"Successfully uploaded {object_name} to MinIO.")
-        except Exception as error: # Catch specific MinIO exceptions if needed, otherwise general
-            raise KafkaLoaderError(f"Failed to upload {object_name} to MinIO. Error: {error}")
+            logging.info(f"Successfully uploaded batch file {object_name} with {len(self.message_buffer)} records.")
+            self.message_buffer = []  # Clear buffer after successful flush
+            self.last_flush_time = datetime.now()  # Reset flush timer
+        except Exception as error:
+            raise KafkaLoaderError(f"Failed to upload batch file {object_name} to MinIO. Error: {error}")
 
     def load_from_kafka_to_s3(self, num_messages_to_process=None, timeout_ms=1000, testing_mode=False):
-        """Consumes messages from Kafka and loads them into MinIO."""
+        """Consumes messages from Kafka and loads them into MinIO in batches."""
         self.consumer = self._get_kafka_consumer(testing_mode=testing_mode)
         self.minio_client = self._get_minio_client()
         self.consumer.subscribe([self.topic])
         logging.info(f"Subscribed to Kafka topic: {self.topic}")
-
         messages_processed = 0
-        is_running = True # Use a clear flag for loop control
-
+        is_running = True
+        self.last_flush_time = datetime.now()  # Initialize flush timer at start of run
         try:
             while is_running:
-                msg = self.consumer.poll(timeout=timeout_ms / 1000.0)
-
-                if msg is None:
+                # smaller timeout for polling so flush conditions are checked more frequently
+                # ideally be less than or equal to flush_interval_seconds
+                poll_timeout = min(timeout_ms / 1000.0, self.flush_interval_seconds / 2.0)
+                msg = self.consumer.poll(timeout=poll_timeout)
+                if not msg:
                     logging.info("Timeout lapsed - No message received.")
-                    # If num_messages_to_process is None (continuous mode) AND we've processed *some* messages
-                    # AND we then hit a timeout, we assume no more data for this batch interval
-                    if num_messages_to_process is None and messages_processed > 0:
-                        is_running = False # Exit loop
-                    continue # Continue polling if no messages but still expect more (or if messages_processed == 0)
-
+                    # flush time and there's data in buffer, flush it
+                    if (datetime.now() - self.last_flush_time).total_seconds() >= self.flush_interval_seconds:
+                        if self.message_buffer:
+                            self._flush_buffer_to_s3()
+                    # exit when no more messages and buffer is empty
+                    if num_messages_to_process is None and messages_processed > 0 and not self.message_buffer:
+                        is_running = False
+                    continue
                 if msg.error():
                     if msg.error().code() == KafkaError._PARTITION_EOF:
                         logging.info(
-                            f"End of partition reached {msg.topic()} [{msg.partition()}] at offset {msg.offset()}")
-                        # Similar logic for EOF: if continuous and processed some, assume end of current stream
-                        if num_messages_to_process is None and messages_processed > 0:
+                            f"End of partition reached {msg.topic()} [{msg.partition()}] at offset {msg.offset()}. Flushing any remaining buffer...")
+                        self._flush_buffer_to_s3()  # ensures no data is left behind
+                        if not num_messages_to_process and not self.message_buffer:  # Exit if continuous mode and buffer is now empty
                             is_running = False
                     else:
-                        raise KafkaLoaderError(f"Kafka error: {msg.error()}") # Raise custom error for Kafka errors
-                    continue # Continue to next poll, even on EOF
-
-                # Process valid message
+                        raise KafkaLoaderError(f"Kafka error: {msg.error()}")
+                    continue
+                    # Process valid message
                 record_value = msg.value().decode('utf-8')
                 try:
-                    data = json.loads(record_value)
-                except json.JSONDecodeError as error:
-                    logging.error(f"Failed to decode JSON: {record_value}. Error: {error}. Skipping message.")
+                    # - append (value, partition, offset) to buffer
+                    self.message_buffer.append((record_value, msg.partition(), msg.offset()))
+                    messages_processed += 1
+                except Exception as error:
+                    logging.error(
+                        f"Failed to process message from Kafka: {record_value}. Error: {error}. Skipping message.")
                     continue
-
-                event_date = self._get_event_date(data.get('invoicedate')) # <--- Corrected call here
-                object_name = self._generate_object_name(msg, event_date)
-
-                self._upload_to_minio(record_value, object_name) # _upload_to_minio handles its own KafkaLoaderError
-                messages_processed += 1
-                if num_messages_to_process is not None and messages_processed >= num_messages_to_process:
+                # flush conditions - count or time interval
+                if len(self.message_buffer) >= self.flush_message_count:
+                    self._flush_buffer_to_s3()
+                # flush by time only
+                elif (datetime.now() - self.last_flush_time).total_seconds() >= self.flush_interval_seconds:
+                    if self.message_buffer:
+                        self._flush_buffer_to_s3()
+                # if target messages processed if num_messages_to_process is set
+                if num_messages_to_process and messages_processed >= num_messages_to_process:
                     logging.info(f"Processed {messages_processed} messages as requested.")
-                    is_running = False # Exit loop if target messages processed
-
+                    is_running = False
         except KeyboardInterrupt:
             logging.info("Stopping Kafka consumer due to KeyboardInterrupt.")
-        except KafkaLoaderError: # Catch custom errors and log before re-raising
-            raise # Re-raise if it's our custom error
-        except Exception as error: # Catch any other unexpected errors
-            raise KafkaLoaderError(f"An unhandled error occurred in consumer loop: {error}") # Wrap and re-raise
+        except KafkaLoaderError:
+            raise
+        except Exception as error:
+            raise KafkaLoaderError(f"An unhandled error occurred in consumer loop: {error}")
         finally:
+            # any remaining messages in the buffer are flushed before closing
+            if self.message_buffer:
+                logging.info("Flushing remaining messages in buffer before closing...")
+                try:
+                    self._flush_buffer_to_s3()
+                except Exception as error:
+                    logging.error(f"Failed to flush remaining buffer on exit: {error}")
             if self.consumer:
                 self.consumer.close()
                 logging.info("Kafka Consumer closed.")
@@ -174,7 +234,8 @@ class KafkaS3Loader:
 
 # Note: This __main__ block is for isolated testing, actual orchestration is in main_ingestion_job.py
 # if __name__ == "__main__":
-#     contract_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'config', 'transactions_contract.yaml')
+#     contract_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'config',
+#                                  'transactions_contract.yaml')
 #     loader = KafkaS3Loader(contract_path)
 #     logging.info("Running KafkaS3Loader in isolated test mode (checking first 100 messages)...")
 #     loader.load_from_kafka_to_s3(num_messages_to_process=100, testing_mode=True)  # Process first 100 messages then exit

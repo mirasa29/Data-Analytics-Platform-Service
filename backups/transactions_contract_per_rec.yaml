@@ -57,10 +57,8 @@ kafka_config:
 s3_landing_config:
   bucket_name: "data-lake"
   prefix: "bronze/online_retail_app/transactions/"
-  data_format: "jsonl"  # json line format for batches
+  data_format: "json"
   access_key: "minioadmin"
   secret_key: "minioadmin"
   endpoint: "minio:9000"
   secure: False
-  flush_message_count: 1000
-  flush_interval_seconds: 30

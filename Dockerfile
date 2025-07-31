@@ -12,3 +12,4 @@ EXPOSE 8000
 
 # This command will be the default entrypoint when the container starts
 CMD ["python", "src/main_ingestion_job.py"]
+#CMD ["python", "src/postgres_extractor.py"] # test
