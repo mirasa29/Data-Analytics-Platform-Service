@@ -26,7 +26,7 @@ def run_ingestion_pipeline(config_path='config/transactions_contract.yaml'):
     logging.info("Starting data ingestion pipeline...")
 
     # Define state file path relative to the project root or a known location
-    STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'state', 'bkp_transactions_load_state.json')
+    STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'state', 'transactions_load_state.json')
     state_manager = StateManager(STATE_FILE)
 
     # Load contract configuration for initial watermark and component initialization
