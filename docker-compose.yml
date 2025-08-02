@@ -68,7 +68,7 @@ services:
 
 
   ingestion_app:
-    build: .
+    build: ./ingestion_service
     container_name: ingestion_service_app
     environment:
       PYTHONUNBUFFERED: 1 # Ensures Python output is not buffered in logs

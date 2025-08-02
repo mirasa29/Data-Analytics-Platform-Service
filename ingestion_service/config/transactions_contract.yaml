@@ -2,9 +2,10 @@ producer:
   name: "online_retail_app"
   source_system: "online_retail_app"
   description: "Online Retail Application Transactions Data"
-  source_type: "postgres database"
+  source_type: "database"
   source_config:
-    host: "postgres_db"   #for local test, set to "localhost"
+    db_type: "postgresql"
+    host: "postgres_db"   #for local tests, set to "localhost"
     port: 5432
     database: "sales_db"
     user: "sales_user"
@@ -23,7 +24,7 @@ dataset:
     # The value here will serve as the *initial* watermark for the very first run.
     initial_watermark_value: "2009-12-01 00:00:00" # Set to a date before your data starts
 
-  schema:
+  data_schema:
     fields:
       - name: invoiceno
         type: string

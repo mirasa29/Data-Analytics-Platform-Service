@@ -1,4 +1,3 @@
-# ingestion_service/src/state_manager.py
 import json
 import os
 import logging

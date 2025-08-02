@@ -1,3 +1,10 @@
+# Ingestion Service App
+
+### to run scripts under ingestion_app container, run the code as module to avoid import errors (since models are above the main app directory)
+- run `python -m src.postgres_extractor` or `python -m src.kafka_topic_viewer`
+
+###### note: notice the `-m` flag which allows you to run a module as a script, treating the directory as a package. and the absence of the `.py` extension.
+
 # postgres_extractor.py:
 
 ### to peak on data on the fly
@@ -11,3 +18,4 @@
 ### to see data delivered to kafka topic via kafka_topic_viewer.py script 
 - run `docker compose run --rm ingestion_app /bin/bash` to keep the container running on shell
 - run `python3 /app/scripts/kafka_topic_viewer.py` note that this script relies on data contract
+

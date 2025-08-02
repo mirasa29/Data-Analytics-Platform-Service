@@ -64,8 +64,8 @@ def check_kafka_topic(config_path, num_messages_to_check=10, timeout_ms=5000):
 
     except KeyboardInterrupt:
         logging.info("Kafka topic check stopped by user.")
-    except Exception as e:
-        logging.error(f"An unhandled error occurred: {e}")
+    except Exception as error:
+        logging.error(f"An unhandled error occurred: {error}")
     finally:
         consumer.close()
         logging.info("Kafka consumer closed.")
