@@ -3,11 +3,12 @@ import logging
 import os
 import yaml
 from datetime import datetime
+import threading
+from typing import List, Tuple
 
-from .postgres_extractor import PostgresExtractor, PostgresExtractorError
-from .kafka_loader import KafkaS3Loader, KafkaLoaderError
-from .state_manager import StateManager, StateManagerError
-from ..models.pipeline_config import PipelineConfig, ValidationError
+from src.state_manager import StateManager, StateManagerError
+from src.ingestion_worker import IngestionWorker, IngestionWorkerError
+from models.pipeline_config import PipelineConfig, ValidationError
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -20,101 +21,77 @@ class MainIngestionJobError(Exception):
         logging.error(f"Main Ingestion Job failure: {error}")
 
 
-def run_ingestion_pipeline(config_path='config/transactions_contract.yaml'):
-    """
-    Orchestrates the data extraction, production to Kafka, and loading to S3,
-    with state management for incremental loads.
-    """
-    logging.info("Starting data ingestion pipeline...")
-
-    STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'state', 'transactions_load_state.json')
-    state_manager = StateManager(STATE_FILE)
-
-    # 1. Load, parse, and validate config using Pydantic
-    pipeline_config = None
+def load_config(config_path: str) -> PipelineConfig:
+    """Loads and validates a single data contract file using Pydantic models."""
     try:
         with open(config_path, 'r') as f:
             config_dict = yaml.safe_load(f)
-        pipeline_config = PipelineConfig.model_validate(config_dict)
+        return PipelineConfig.model_validate(config_dict)
     except FileNotFoundError:
         raise MainIngestionJobError(f"Configuration file not found at: {config_path}")
     except yaml.YAMLError as error:
         raise MainIngestionJobError(f"Error parsing configuration file '{config_path}': {error}")
     except ValidationError as error:
-        raise MainIngestionJobError(f"Configuration validation failed: {error}")
+        raise MainIngestionJobError(f"Configuration validation failed for '{config_path}': {error}")
     except Exception as error:
         raise MainIngestionJobError(f"Unexpected error loading config file '{config_path}': {error}")
 
-    # 2. Determine the 'last_extracted_value' for the current run
-    last_extracted_value = None
+
+def run_ingestion_pipeline(config_dir: str = 'config'):
+    """
+    The orchestrator that discovers data contracts and launches a worker for each.
+    """
+    logging.info("Starting ingestion pipeline orchestrator...")
+
+    # List all contract files in the specified directory
+    contracts = [os.path.join(config_dir, f) for f in os.listdir(config_dir) if f.endswith('.yaml')]
+
+    if not contracts:
+        raise MainIngestionJobError("No data contracts found in the config directory.")
+
+    workers: List[IngestionWorker] = []
+    worker_threads: List[threading.Thread] = []
+
+    for contract_path in contracts:
+        try:
+            pipeline_config = load_config(contract_path)
+
+            # Create a unique state file for each worker based on its entity name
+            state_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'state',
+                                      f"{pipeline_config.dataset.entity_name}_load_state.json")
+            state_manager = StateManager(state_file)
+
+            worker = IngestionWorker(pipeline_config, state_manager)
+            worker_thread = threading.Thread(target=worker.run, daemon=True)  # Set as daemon to allow main to exit
+            worker_threads.append(worker_thread)
+            workers.append(worker)
+
+            logging.info(f"Worker for '{pipeline_config.dataset.entity_name}' initialized.")
+        except Exception as error:
+            # If a worker fails to initialize, log the error and continue to the next contract
+            logging.error(f"Failed to initialize worker for contract '{contract_path}': {error}. Skipping.")
+
+    if not worker_threads:
+        raise MainIngestionJobError("No workers were successfully initialized. Exiting.")
+
+    logging.info(f"Starting {len(worker_threads)} ingestion workers...")
+    for thread in worker_threads:
+        thread.start()
+
+    # The orchestrator will now run in an infinite loop, monitoring the workers
     try:
-        current_state = state_manager.load_state()
-        last_extracted_value = current_state.get('last_watermark_value')
-        logging.info(f"Loaded last extracted watermark from state: {last_extracted_value}")
-    except StateManagerError as error:
-        logging.warning(f"Could not load state from file. Proceeding with initial watermark from contract. Error: {error}")
-
-    if last_extracted_value is None:
-        initial_watermark_str = pipeline_config.dataset.incremental_load.initial_watermark_value
-        watermark_type = pipeline_config.dataset.incremental_load.watermark_type
-
-        if watermark_type == 'timestamp':
-            try:
-                last_extracted_value = datetime.fromisoformat(initial_watermark_str)
-            except ValueError:
-                raise MainIngestionJobError(
-                    f"Initial watermark '{initial_watermark_str}' in contract is not a valid ISO timestamp for type '{watermark_type}'.")
-        elif watermark_type == 'integer':
-            try:
-                last_extracted_value = int(initial_watermark_str)
-            except ValueError:
-                raise MainIngestionJobError(
-                    f"Initial watermark '{initial_watermark_str}' in contract is not a valid integer for type '{watermark_type}'.")
-        else:
-            raise MainIngestionJobError(f"Unsupported watermark_type '{watermark_type}' specified in contract.")
-
-        logging.info(f"Using initial watermark from contract: {last_extracted_value}")
-
-    extractor = PostgresExtractor()
-    loader = KafkaS3Loader()
-
-    new_watermark_value = last_extracted_value
-
-    try:
-        # 3. Run Data Extraction and Kafka Production
-        logging.info("Starting PostgreSQL extraction and Kafka production...")
-        # Pass pipeline_config and last_extracted_value to the method
-        new_watermark_value = extractor.extract_and_produce(pipeline_config, last_extracted_value)
-        logging.info(
-            f"PostgreSQL extraction and Kafka production completed. New highest watermark: {new_watermark_value}")
-
-        # 4. Save New Watermark State
-        if new_watermark_value != last_extracted_value:
-            state_manager.save_state({'last_watermark_value': new_watermark_value})
-            logging.info(f"State saved with new watermark: {new_watermark_value}")
-        else:
-            logging.info("No new data processed or watermark did not advance. State remains unchanged.")
-
-        time.sleep(5)
-
-        # 5. Run Kafka Consumption and MinIO Loading
-        logging.info("Starting Kafka consumption and MinIO loading...")
-        # Pass pipeline_config to the method
-        loader.load_from_kafka_to_s3(pipeline_config)
-        logging.info("Kafka consumption and MinIO loading completed.")
-
-        logging.info("Data ingestion pipeline finished successfully.")
-
-    except PostgresExtractorError as error:
-        raise MainIngestionJobError(f"Extraction/Production failed: {error}")
-    except KafkaLoaderError as error:
-        raise MainIngestionJobError(f"Kafka Consumption/S3 Loading failed: {error}")
-    except StateManagerError as error:
-        raise MainIngestionJobError(f"State Management failed: {error}")
-    except Exception as error:
-        raise MainIngestionJobError(f"An unexpected error occurred: {error}")
+        while True:
+            # Check if any workers have failed (optional for MVP, as exceptions are already logged)
+            # You could add logic here to re-start a worker or send an alert
+            alive_workers = [thread.is_alive() for thread in worker_threads]
+            if not any(alive_workers):
+                logging.info("All ingestion workers have stopped. Exiting orchestrator.")
+                break
+            time.sleep(10)
+    except KeyboardInterrupt:
+        logging.info("Orchestrator received stop signal. Shutting down...")
     finally:
-        logging.info("Ingestion pipeline execution finished.")
+        logging.info("Orchestrator exiting.")
 
 
 if __name__ == "__main__":

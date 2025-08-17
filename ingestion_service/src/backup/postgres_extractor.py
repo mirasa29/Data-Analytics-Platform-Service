@@ -7,7 +7,7 @@ from decimal import Decimal
 import yaml
 import os
 from confluent_kafka import Producer
-from ..models.pipeline_config import PipelineConfig
+from models.pipeline_config import PipelineConfig, SourceConfig, KafkaConfig
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -17,7 +17,7 @@ class PostgresExtractorError(Exception):
 
     def __init__(self, error: str):
         super().__init__(f"Postgres Extractor failure: {error}")
-        logging.error(f"Postgres Extractor failure: {error}"     )
+        logging.error(f"Postgres Extractor failure: {error}")
 
 
 class CustomJsonEncoder(json.JSONEncoder):
@@ -41,7 +41,7 @@ class PostgresExtractor:
         self.db_conn = None
         self.producer = None
 
-    def _set_db_connection(self, source_config):
+    def _set_db_connection(self, source_config: SourceConfig):
         """Establishes and returns a PostgreSQL database connection."""
         try:
             self.db_conn = psycopg2.connect(
@@ -56,7 +56,7 @@ class PostgresExtractor:
         except psycopg2.Error as db_error:
             raise PostgresExtractorError(f"Error connecting to PostgreSQL: {db_error}")
 
-    def _get_kafka_producer(self, kafka_config):
+    def _get_kafka_producer(self, kafka_config: KafkaConfig):
         """Initializes and returns a Kafka Producer."""
         try:
             conf = {'bootstrap.servers': kafka_config.bootstrap_servers}
@@ -79,7 +79,7 @@ class PostgresExtractor:
         return ", ".join(columns)
 
     def extract_and_produce(self, pipeline_config: PipelineConfig,
-                            last_extracted_value):  # UPDATED: takes pipeline_config
+                            last_extracted_value):
         """
         Extracts data incrementally from PostgreSQL and produces to Kafka.
         Returns the new highest watermark value found in this run.

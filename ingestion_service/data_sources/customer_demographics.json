@@ -1,0 +1,22 @@
+[
+  {
+    "customer_id": "1",
+    "city": "London",
+    "age": 35
+  },
+  {
+    "customer_id": "2",
+    "city": "Paris",
+    "age": 42
+  },
+  {
+    "customer_id": "10001",
+    "city": "Manchester",
+    "age": 28
+  },
+  {
+    "customer_id": "10002",
+    "city": "Lyon",
+    "age": 55
+  }
+]

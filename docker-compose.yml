@@ -11,9 +11,9 @@ services:
       POSTGRES_PASSWORD: sales_password
       POSTGRES_DB: sales_db
     volumes:
-      - ./data/postgres:/var/lib/postgresql/data  # Persist data
-      - ./sql:/docker-entrypoint-initdb.d         # Initialize database with SQL scripts and sample data
-    healthcheck: # ensures Postgres service (not just container) is ready before other app services start
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./sql:/docker-entrypoint-initdb.d  # Init DB, run SQL to load sample data
+    healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB" ]
       interval: 5s
       timeout: 5s
@@ -30,36 +30,86 @@ services:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
     volumes:
-      - ./data/minio:/data  # Persist MinIO data
-    command: server /data --console-address ":9001"  # Start MinIO server with console
-    healthcheck: # Ensures MinIO service is ready before other app services start
+      - ./data/minio:/data
+    command: server /data --console-address ":9001"  # Start MinIO server console
+    healthcheck:
        test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
        interval: 5s
        timeout: 5s
        retries: 5
 
-  kafka:
-    image: 'bitnami/kafka:latest' # Or a specific version like 'bitnami/kafka:3.7.0'
-    container_name: kafka_broker
+  kafka1:
+    image: 'bitnami/kafka:latest' # or version v3.7.0
+    container_name: kafka_broker1
     ports:
-      - "9092:9092" # For client connections
-      - "9093:9093" # For controller communication (internal, but exposed for clarity)
+      - "9092:9092" # client connections
+      - "9093:9093" # controller comms (internal, but exposed for clarity)
     environment:
-      # --- KRaft Mode Configuration ---
       KAFKA_CFG_NODE_ID: 1 # Unique ID for this Kafka node
       KAFKA_CFG_PROCESS_ROLES: controller,broker # This node acts as both controller and broker
-      KAFKA_CLUSTER_ID: "lFUnmXIXSZ6V4bSjMztclQ" # one time generated cluster ID
-      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093 # Node ID @ ServiceName:ControllerPort
+      KAFKA_CLUSTER_ID: "lFUnmXIXSZ6V4bSjMztclQ" # one time generated via `docker run --rm bitnami/kafka:latest kafka-storage.sh random-uuid`
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka1:9093,2@kafka2:9093,3@kafka3:9093 # Node ID @ ServiceName:ControllerPort
       KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093 # Broker listener, Controller listener
-      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,CONTROLLER://kafka:9093 # For external/internal client connections
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka1:9092,CONTROLLER://kafka1:9093 # For external/internal client connections
       KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
       KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
       ALLOW_PLAINTEXT_LISTENER: "yes" # Essential for plaintext connections
-      # --- Persistence for Kafka ---
       KAFKA_CFG_LOG_DIRS: /opt/bitnami/kafka/data/kraft_logs # Ensure persistent logs for KRaft
     volumes:
       - ./data/kafka:/opt/bitnami/kafka/data # Persistent data volume for Kafka logs/metadata
-    healthcheck: # Ensures Kafka service is ready before other app services start
+    healthcheck:
+      test: [ "CMD-SHELL", "kafka-broker-api-versions.sh --bootstrap-server localhost:9092 || exit 1" ]
+      interval: 10s
+      timeout: 10s
+      retries: 10 # generous retries to allow KRaft to stabilize ;)
+      start_period: 30s # chill out for a bit before checking
+
+  kafka2:
+    image: 'bitnami/kafka:latest'
+    container_name: kafka_broker2
+    ports:
+      - "9094:9092"
+      - "9095:9093"
+    environment:
+      KAFKA_CFG_NODE_ID: 2
+      KAFKA_CFG_PROCESS_ROLES: controller,broker
+      KAFKA_CLUSTER_ID: "lFUnmXIXSZ6V4bSjMztclQ"
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka1:9093,2@kafka2:9093,3@kafka3:9093
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka2:9092,CONTROLLER://kafka2:9093
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+      KAFKA_CFG_LOG_DIRS: /opt/bitnami/kafka/data/kraft_logs
+    volumes:
+      - ./data/kafka2:/opt/bitnami/kafka/data
+    healthcheck:
+      test: [ "CMD-SHELL", "kafka-broker-api-versions.sh --bootstrap-server localhost:9092 || exit 1" ]
+      interval: 10s
+      timeout: 10s
+      retries: 10 # generous retries to allow KRaft to stabilize ;)
+      start_period: 30s # chill out for a bit before checking
+
+  kafka3:
+    image: 'bitnami/kafka:latest'
+    container_name: kafka_broker3
+    ports:
+      - "9096:9092"
+      - "9097:9093"
+    environment:
+      KAFKA_CFG_NODE_ID: 3
+      KAFKA_CFG_PROCESS_ROLES: controller,broker
+      KAFKA_CLUSTER_ID: "lFUnmXIXSZ6V4bSjMztclQ"
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka1:9093,2@kafka2:9093,3@kafka3:9093
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka3:9092,CONTROLLER://kafka3:9093
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+      KAFKA_CFG_LOG_DIRS: /opt/bitnami/kafka/data/kraft_logs
+    volumes:
+      - ./data/kafka3:/opt/bitnami/kafka/data
+    healthcheck:
       test: [ "CMD-SHELL", "kafka-broker-api-versions.sh --bootstrap-server localhost:9092 || exit 1" ]
       interval: 10s
       timeout: 10s
@@ -68,18 +118,31 @@ services:
 
 
   ingestion_app:
-    build: ./ingestion_service
+    build:
+      context: ./ingestion_service
+      dockerfile: Dockerfile
     container_name: ingestion_service_app
     environment:
-      PYTHONUNBUFFERED: 1 # Ensures Python output is not buffered in logs
+        PYTHONUNBUFFERED: 1
+        PYTHONPATH: "/app"
     volumes:
       # Mount directory for persistence
       - ./ingestion_service/state:/app/state
-    depends_on:
-      # Services start before ingestion_app attempts to connect
-      kafka:
+      - ./ingestion_service/data_sources:/app/data_sources
+    depends_on: # make sure below containers are served first
+      # make sure services are healthy first
+      kafka1:
+        condition: service_healthy
+      kafka2:
+        condition: service_healthy
+      kafka3:
         condition: service_healthy
       minio:
-          condition: service_started # less strict than healthy, but ensures MinIO is up
+          condition: service_started
       postgres_db:
           condition: service_healthy
+
+  #TODO: Spark service
+  #TODO: Transformation app
+  #TODO: DuckDB service
+  #TODO: Jupyter service

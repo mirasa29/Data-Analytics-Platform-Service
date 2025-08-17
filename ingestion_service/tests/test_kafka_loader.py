@@ -1,12 +1,10 @@
 import pytest
-import json
 from datetime import datetime
-from unittest.mock import MagicMock, patch, call
-import io
+from unittest.mock import MagicMock, patch
 import confluent_kafka
 
-from ingestion_service.src.kafka_loader import KafkaS3Loader, KafkaLoaderError
-from ingestion_service.models.pipeline_config import PipelineConfig
+from ingestion_service.src.backup.kafka_loader import KafkaLoaderError
+
 
 # Failing - need to mock Minio client properly
 
@@ -16,7 +14,7 @@ def test_load_from_kafka_to_s3_message_count_flush(loader_instance, mock_pipelin
     """Test that a flush is triggered by message count."""
     loader_instance.consumer = mock_kafka_consumer
     with patch('minio.Minio', return_value=mock_minio_client):
-        loader_instance.minio_client = loader_instance._get_minio_client(mock_pipeline_config.s3_landing_config)
+        loader_instance.minio_client = loader_instance.get_minio_client(mock_pipeline_config.s3_landing_config)
 
     mock_msg_value = b'{"id":1, "invoicedate":"2023-01-01T00:00:00"}'
     mock_msg_list = [
@@ -29,7 +27,7 @@ def test_load_from_kafka_to_s3_message_count_flush(loader_instance, mock_pipelin
 
     loader_instance.load_from_kafka_to_s3(mock_pipeline_config, num_messages_to_process=3, testing_mode=True)
 
-    assert loader_instance._flush_buffer_to_s3.call_count == 2
+    assert loader_instance.flush_buffer_to_s3.call_count == 2
     assert loader_instance.consumer.close.assert_called_once()
 
 
@@ -38,7 +36,7 @@ def test_load_from_kafka_to_s3_interval_flush(loader_instance, mock_pipeline_con
     """Test that a flush is triggered by time interval."""
     loader_instance.consumer = mock_kafka_consumer
     with patch('minio.Minio', return_value=mock_minio_client):
-        loader_instance.minio_client = loader_instance._get_minio_client(mock_pipeline_config.s3_landing_config)
+        loader_instance.minio_client = loader_instance.get_minio_client(mock_pipeline_config.s3_landing_config)
 
     mock_msg_value = b'{"id":1, "invoicedate":"2023-01-01T00:00:00"}'
     loader_instance.consumer.poll.side_effect = [
@@ -65,7 +63,7 @@ def test_load_from_kafka_to_s3_interval_flush(loader_instance, mock_pipeline_con
     loader_instance.flush_interval_seconds = 10
     loader_instance.load_from_kafka_to_s3(mock_pipeline_config, num_messages_to_check=3, testing_mode=True)
 
-    assert loader_instance._flush_buffer_to_s3.call_count == 2
+    assert loader_instance.flush_buffer_to_s3.call_count == 2
     assert loader_instance.consumer.close.assert_called_once()
     mock_now_patch.stop()
 
@@ -75,7 +73,7 @@ def test_load_from_kafka_to_s3_kafka_error(loader_instance, mock_pipeline_config
     """Test that a Kafka error during poll raises KafkaLoaderError."""
     loader_instance.consumer = mock_kafka_consumer
     with patch('minio.Minio', return_value=mock_minio_client):
-        loader_instance.minio_client = loader_instance._get_minio_client(mock_pipeline_config.s3_landing_config)
+        loader_instance.minio_client = loader_instance.get_minio_client(mock_pipeline_config.s3_landing_config)
 
     mock_msg_error = MagicMock()
     mock_msg_error.error.return_value = confluent_kafka.KafkaError(confluent_kafka.KafkaError._FAIL)
@@ -90,7 +88,7 @@ def test_load_from_kafka_to_s3_kafka_error(loader_instance, mock_pipeline_config
 def test_flush_buffer_to_s3_success(loader_instance, mock_pipeline_config, mocker):
     """Test successful flushing of buffer to S3 with correct content and naming."""
     with patch('minio.Minio', return_value=mock_minio_client):
-        loader_instance.minio_client = loader_instance._get_minio_client(mock_pipeline_config.s3_landing_config)
+        loader_instance.minio_client = loader_instance.get_minio_client(mock_pipeline_config.s3_landing_config)
 
     mock_record_value1 = '{"id":1, "invoicedate":"2023-07-25T10:00:00"}'
     mock_record_value2 = '{"id":2, "invoicedate":"2023-07-25T10:01:00"}'
@@ -104,7 +102,7 @@ def test_flush_buffer_to_s3_success(loader_instance, mock_pipeline_config, mocke
     mocker.patch('src.kafka_loader.datetime.fromisoformat', side_effect=datetime.fromisoformat)
     mocker.patch('src.kafka_loader.uuid.uuid4', return_value=MagicMock(hex='flush_uuid_hex'))
 
-    loader_instance._flush_buffer_to_s3(mock_pipeline_config.s3_landing_config)
+    loader_instance.flush_buffer_to_s3(mock_pipeline_config.s3_landing_config)
 
     assert not loader_instance.message_buffer
     assert loader_instance.last_flush_time == mock_now

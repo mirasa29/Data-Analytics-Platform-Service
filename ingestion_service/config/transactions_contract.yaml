@@ -2,7 +2,7 @@ producer:
   name: "online_retail_app"
   source_system: "online_retail_app"
   description: "Online Retail Application Transactions Data"
-  source_type: "database"
+  source_type: "rdbms"
   source_config:
     db_type: "postgresql"
     host: "postgres_db"   #for local tests, set to "localhost"
@@ -52,7 +52,7 @@ dataset:
         nullable: true
 
 kafka_config:
-  bootstrap_servers: "kafka:9092"
+  bootstrap_servers: "kafka1:9092,kafka2:9092,kafka3:9092"
   topic: "raw_transactions"
 
 s3_landing_config:

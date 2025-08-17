@@ -2,13 +2,10 @@
 import pytest
 import psycopg2
 import json
-from confluent_kafka import Producer
 from datetime import datetime
-from decimal import Decimal
 from unittest.mock import MagicMock, patch, call
 
-from ingestion_service.src.postgres_extractor import PostgresExtractor, PostgresExtractorError, CustomJsonEncoder
-from ingestion_service.models.pipeline_config import PipelineConfig
+from ingestion_service.src.backup.postgres_extractor import PostgresExtractorError, CustomJsonEncoder
 
 
 def test_set_db_connection_success(extractor_instance, mock_pipeline_config, mock_db_conn_and_cursor):
@@ -58,13 +55,13 @@ def test_extract_and_produce_incremental_load_with_data(extractor_instance, mock
         expected_producer_calls = [
             call('test_topic', key=json.dumps({'id': 1}).encode('utf-8'),
                  value=json.dumps({'id': 1, 'name': 'item_A', 'updated_at': datetime(2023, 1, 1, 10, 0, 0)},
-                                  cls=CustomJsonEncoder).encode('utf-8'), callback=extractor_instance._delivery_report),
+                                  cls=CustomJsonEncoder).encode('utf-8'), callback=extractor_instance.delivery_report),
             call('test_topic', key=json.dumps({'id': 2}).encode('utf-8'),
                  value=json.dumps({'id': 2, 'name': 'item_B', 'updated_at': datetime(2023, 1, 1, 11, 0, 0)},
-                                  cls=CustomJsonEncoder).encode('utf-8'), callback=extractor_instance._delivery_report),
+                                  cls=CustomJsonEncoder).encode('utf-8'), callback=extractor_instance.delivery_report),
             call('test_topic', key=json.dumps({'id': 3}).encode('utf-8'),
                  value=json.dumps({'id': 3, 'name': 'item_C', 'updated_at': datetime(2023, 1, 1, 12, 0, 0)},
-                                  cls=CustomJsonEncoder).encode('utf-8'), callback=extractor_instance._delivery_report),
+                                  cls=CustomJsonEncoder).encode('utf-8'), callback=extractor_instance.delivery_report),
         ]
         mock_kafka_producer.produce.assert_has_calls(expected_producer_calls, any_order=False)
 

@@ -9,7 +9,7 @@ from typing import List, Tuple
 # isolated tests
 import os
 import yaml
-from ..models.pipeline_config import PipelineConfig, KafkaConfig, S3LandingConfig
+from models.pipeline_config import PipelineConfig, KafkaConfig, S3LandingConfig
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 

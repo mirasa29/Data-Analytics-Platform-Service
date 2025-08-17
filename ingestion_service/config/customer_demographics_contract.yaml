@@ -1,0 +1,46 @@
+producer:
+  name: "crm_system"
+  source_system: "crm_data"
+  description: "Customer demographic data from a CRM system"
+  source_type: "flat_file"
+  source_config:
+    file_path: "/app/data_sources/customer_demographics.json"
+    file_type: "json"
+
+dataset:
+  entity_name: "customer_demographics"
+  version: "1.0"
+  primary_keys: ["customer_id"]
+  fetch_size: 100
+  incremental_load:
+    mode: "full"
+    watermark_column: "NA"
+    watermark_type: "NA"
+    initial_watermark_value: "NA"
+
+  data_schema:
+    fields:
+      - name: customer_id
+        type: integer
+        nullable: false
+      - name: city
+        type: string
+        nullable: false
+      - name: age
+        type: integer
+        nullable: true
+
+kafka_config:
+  bootstrap_servers: "kafka1:9092,kafka2:9092,kafka3:9092"
+  topic: "raw_customer_demographics"
+
+s3_landing_config:
+  bucket_name: "data-lake"
+  prefix: "bronze/crm_data/customer_demographics/"
+  data_format: "jsonl"
+  access_key: "minioadmin"
+  secret_key: "minioadmin"
+  endpoint: "minio:9000"
+  secure: False
+  flush_message_count: 50
+  flush_interval_seconds: 5

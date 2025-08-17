@@ -1,14 +1,12 @@
 import pytest
-from unittest.mock import MagicMock, patch, mock_open
-import psycopg2
+from unittest.mock import MagicMock
 import os
 from confluent_kafka import Producer, Consumer
 from minio import Minio
-from ingestion_service.src.postgres_extractor import PostgresExtractor
-from ingestion_service.src.kafka_loader import KafkaS3Loader
+from ingestion_service.src.backup.postgres_extractor import PostgresExtractor
+from ingestion_service.src.backup.kafka_loader import KafkaS3Loader
 from ingestion_service.models.pipeline_config import PipelineConfig
-from ingestion_service.src.state_manager import StateManager, StateManagerError
-from datetime import datetime
+from ingestion_service.src.state_manager import StateManager
 
 
 @pytest.fixture

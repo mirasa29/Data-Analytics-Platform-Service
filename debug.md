@@ -1,3 +1,11 @@
+# Create Topic with partitions
+
+### to demo parallelism for kafka 
+For Postgres:
+- run `docker compose run --rm kafka1 kafka-topics.sh --create --topic raw_transactions --bootstrap-server kafka1:9092 --partitions 3 --replication-factor 3`
+For Flatfile:
+- run `docker compose run --rm kafka1 kafka-topics.sh --create --topic raw_customer_demographics --bootstrap-server kafka1:9092 --partitions 3 --replication-factor 3`
+
 # Ingestion Service App
 
 ### to run scripts under ingestion_app container, run the code as module to avoid import errors (since models are above the main app directory)
