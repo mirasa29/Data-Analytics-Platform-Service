@@ -1,4 +1,3 @@
-# ingestion_service/models/pipeline_config.py
 from pydantic import BaseModel, Field, field_validator, ValidationError
 from typing import List, Dict, Any, Optional
 from datetime import datetime

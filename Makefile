@@ -1,7 +1,5 @@
-# Makefile for cleaning Kafka and MinIO data with docker-compose restart
 # Project root: /Users/mirasa/PycharmProjects/Data-Analytics-Platform-Service
 
-# make sure to run this Makefile from the project root directory
 workdir := $(shell pwd)
 KAFKA_LOGS := ./data/kafka/kraft_logs
 MINIO_DATA := ./data/minio/data-lake
