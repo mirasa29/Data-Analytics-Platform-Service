@@ -11,7 +11,7 @@ dataset:
   entity_name: "customer_demographics"
   version: "1.0"
   primary_keys: ["customer_id"]
-  fetch_size: 100
+  fetch_size: 0
   incremental_load:
     mode: "full"
     watermark_column: "NA"
@@ -21,13 +21,25 @@ dataset:
   data_schema:
     fields:
       - name: customer_id
-        type: integer
-        nullable: false
-      - name: city
         type: string
         nullable: false
+      - name: name
+        type: string
+        nullable: true
       - name: age
         type: integer
+        nullable: true
+      - name: city
+        type: string
+        nullable: true
+      - name: occupation
+        type: string
+        nullable: true
+      - name: email
+        type: string
+        nullable: true
+      - name: contact_number
+        type: string
         nullable: true
 
 kafka_config:

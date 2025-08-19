@@ -1,23 +1,18 @@
 # Create Topic with partitions
 
-### to demo parallelism for kafka 
+### apply parallelism for kafka 
 For Postgres:
 - run `docker compose run --rm kafka1 kafka-topics.sh --create --topic raw_transactions --bootstrap-server kafka1:9092 --partitions 3 --replication-factor 3`
+
 For Flatfile:
 - run `docker compose run --rm kafka1 kafka-topics.sh --create --topic raw_customer_demographics --bootstrap-server kafka1:9092 --partitions 3 --replication-factor 3`
 
 # Ingestion Service App
 
 ### to run scripts under ingestion_app container, run the code as module to avoid import errors (since models are above the main app directory)
-- run `python -m src.postgres_extractor` or `python -m src.kafka_topic_viewer`
-
+- run `docker compose run --rm ingestion_app /bin/bash` to keep the container running on shell
+- run `python -m src.main_ingestion_job`
 ###### note: notice the `-m` flag which allows you to run a module as a script, treating the directory as a package. and the absence of the `.py` extension.
-
-# postgres_extractor.py:
-
-### to peak on data on the fly
-- convert logging level from INFOR to DEBUG
-- add `logging.debug(f"Extracted Record Sample: {json.dumps(record, cls=CustomJsonEncoder)[:200]}...") # Log first 200 chars` at line 167 before the check for watermark value
 
 ### to peak from kafka topic via kcat cli on container
 - after the postgres_extractor.py runs inside the app container, and while kafka service is up: 

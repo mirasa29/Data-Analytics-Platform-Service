@@ -17,10 +17,64 @@ This project is a Data Analytics Platform MVP designed to ingest, process, and a
 - Test fixtures for reproducible test environments
 - Requirements file for dependency management
 
-## Requirements
+    ## Requirements
 
----
+  - psycopg2-binary v2.9.9, 
+  - confluent-kafka v2.3.0
+  - minio v7.2.16
+  - PyYAML v6.0.1
+  - pydantic v2.8.2
+  - pytest v7.4.0
+  - pytest-mock v3.12.0
 
-## Installation
+    note: all dependencies are listed in `requirements.txt`
 
----
+  ## Installation
+
+    Fresh Install 🧹:
+    ```bash
+   make install
+  ```
+  Install Docker 🐳:
+  ```bash
+  make install-docker
+    ```
+    Install Docker Compose 🎼:
+  ```bash
+  make install-docker-compose
+  ```
+    ## Usage
+    
+    From root directory, start Docker engine:
+    ```bash
+    # using makefile
+    make run-docker-engine
+    # manual docker command
+    open -a docker
+    ```
+
+    From root directory, run docker compose in your IDE if you have docker plugin installed, or run the following command in your terminal:
+    ```bash
+    # start using makefile
+    make start-docker
+    # manual docker compose command
+    docker compose up -d
+    .
+    .
+    .
+    # stop using makefile
+    make stop-docker
+    # manual docker compose command
+    docker compose down
+    ```
+  
+    Clean up after run:
+    ```bash
+    # using makefile
+    make clean-all
+    ```
+  
+
+## Transformation Service
+In Progress... 😜😜😜
+

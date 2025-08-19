@@ -1,3 +1,5 @@
 # only for local install
 -r ingestion_service/requirements.txt
 # -r spark_jobs/requirements.txt
+autopep8==2.1.0
+isort==5.13.2

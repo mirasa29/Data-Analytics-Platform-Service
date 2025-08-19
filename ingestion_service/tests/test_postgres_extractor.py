@@ -5,7 +5,7 @@ import json
 from datetime import datetime
 from unittest.mock import MagicMock, patch, call
 
-from ingestion_service.src.backup.postgres_extractor import PostgresExtractorError, CustomJsonEncoder
+from ingestion_service.src.init_design_backup.postgres_extractor import PostgresExtractorError, CustomJsonEncoder
 
 
 def test_set_db_connection_success(extractor_instance, mock_pipeline_config, mock_db_conn_and_cursor):

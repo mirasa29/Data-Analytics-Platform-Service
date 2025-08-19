@@ -3,7 +3,7 @@ from datetime import datetime
 from unittest.mock import MagicMock, patch
 import confluent_kafka
 
-from ingestion_service.src.backup.kafka_loader import KafkaLoaderError
+from ingestion_service.src.init_design_backup.kafka_loader import KafkaLoaderError
 
 
 # Failing - need to mock Minio client properly

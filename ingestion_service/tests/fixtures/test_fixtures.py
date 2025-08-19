@@ -3,8 +3,8 @@ from unittest.mock import MagicMock
 import os
 from confluent_kafka import Producer, Consumer
 from minio import Minio
-from ingestion_service.src.backup.postgres_extractor import PostgresExtractor
-from ingestion_service.src.backup.kafka_loader import KafkaS3Loader
+from ingestion_service.src.init_design_backup.postgres_extractor import PostgresExtractor
+from ingestion_service.src.init_design_backup.kafka_loader import KafkaS3Loader
 from ingestion_service.models.pipeline_config import PipelineConfig
 from ingestion_service.src.state_manager import StateManager
 
